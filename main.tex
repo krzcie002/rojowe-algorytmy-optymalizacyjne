@@ -1,0 +1,571 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[polish]{babel}
+\usepackage{listings}
+\usepackage{color}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{float}
+\usepackage{capt-of}
+\usepackage{booktabs}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{pgfplots}
+\usepackage[hidelinks]{hyperref}
+\pgfplotsset{compat=1.16}
+\usepackage[style=numeric,sorting=none]{biblatex}
+\addbibresource{literatura.bib}
+\graphicspath{{wykresy_latex/}}
+
+\definecolor{blue}          {cmyk}{1   , 1   , 0   , 0   }
+\definecolor{green}         {cmyk}{1   , 0   , 1   , 0   }
+\definecolor{violetred}     {cmyk}{0   , 0.81, 0   , 0   }
+
+\lstset{
+	basicstyle=\footnotesize\ttfamily,
+	keywordstyle=\color{blue},
+	stringstyle=\color{violetred},
+	commentstyle=\color{green},
+	frame=single,
+	frameround=tttt,
+	framesep=5pt,
+    numbers=left,
+    numberstyle=\tiny,
+    numbersep=8pt,
+    morekeywords={np, zeros, linalg, norm},
+}
+
+% ---------------------------------------------------------------
+% Makra pomocnicze
+% \algfig{NazwaAlgorytmu}{sufiks_pliku}{podpis}
+\newcommand{\algfig}[3]{%
+  \begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{#1_#2.png}
+    \caption{#3}
+    \label{fig:#1:#2}
+  \end{figure}%
+}
+% Liczba w notacji naukowej: \sn{mantysa}{wykladnik}
+\newcommand{\sn}[2]{$#1\!\cdot\!10^{#2}$}
+% Znacznik miejsc do uzupełnienia
+\newcommand{\todo}[1]{\textcolor{red}{[\textbf{DO UZUPEŁNIENIA:} #1]}}
+% ---------------------------------------------------------------
+
+\title{Rojowe metody optymalizacji}
+\author{Krzysztof Ciechanowski}
+\date{Listopad 2026}
+
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+\newpage
+\tableofcontents
+\newpage
+
+%====================================================================
+\section{Wstęp}
+%====================================================================
+
+Celem sprawozdania jest porównanie wybranych algorytmów optymalizacji rojowej
+i pokrewnych metaheurystyk w zadaniu minimalizacji funkcji ciągłej o zmiennej
+liczbie wymiarów. Badaniu poddano sześć algorytmów:
+\textit{OriginalFDO}, \textit{OriginalFFA}, \textit{OriginalFOA},
+\textit{DevFOA}, \textit{WhaleFOA} oraz \textit{OriginalCRO}.
+Każdy z nich uruchomiono dla pięciu rozmiarów problemu:
+$D \in \{2, 3, 10, 30, 50, 100\}$.
+
+\todo{funkcja testowa (nazwa, wzór, dziedzina, minimum globalne), liczba
+niezależnych uruchomień, rozmiar populacji, liczba iteracji, użyta biblioteka
+(np. MEALPY) i ziarno generatora}
+
+Sprawozdanie ma następującą strukturę. Rozdział~\ref{sec:teoria} przedstawia
+podstawy teoretyczne optymalizacji rojowej. Rozdziały~\ref{sec:fdo}--\ref{sec:cro}
+poświęcone są kolejnym algorytmom. Każdy z nich zawiera opis metody, wykresy
+zbieżności, wykresy wartości funkcji celu, analizę różnorodności populacji
+wraz z balansem eksploracji i eksploatacji oraz czas działania. Rozdział~\ref{sec:podsumowanie}
+zawiera zbiorcze wyniki, ranking algorytmów i wnioski.
+
+%====================================================================
+\section{Podstawy teoretyczne}\label{sec:teoria}
+%====================================================================
+
+\subsection{Zadanie optymalizacji globalnej}
+
+Rozważamy zadanie minimalizacji funkcji $f:\mathbb{R}^D \rightarrow \mathbb{R}$ w obszarze
+dopuszczalnym $\Omega = [l_1,u_1]\times\dots\times[l_D,u_D]$:
+\begin{equation}
+    \mathbf{x}^{*} = \arg\min_{\mathbf{x}\in\Omega} f(\mathbf{x}).
+\end{equation}
+Dla funkcji wielomodalnych, o wielu minimach lokalnych, klasyczne metody
+gradientowe zawodzą. Z tego powodu stosuje się metaheurystyki, które nie
+wymagają informacji o pochodnych, a poszukiwanie prowadzą stochastycznie.
+
+\subsection{Inteligencja roju}
+
+Optymalizacja rojowa (ang.\ \textit{swarm intelligence}) opiera się na zbiorze
+prostych agentów, które lokalnie oddziałują ze sobą i ze środowiskiem.
+W efekcie wyłania się zbiorowe zachowanie pozwalające na efektywne przeszukiwanie
+przestrzeni rozwiązań. Klasycznym przykładem jest algorytm PSO~\cite{kennedy1995}.
+Typowa populacja $\{\mathbf{x}_i\}_{i=1}^{N}$ jest aktualizowana iteracyjnie według schematu
+\begin{equation}
+    \mathbf{x}_i^{t+1} = \mathbf{x}_i^{t} + \Delta\mathbf{x}_i^{t},
+\end{equation}
+gdzie krok $\Delta\mathbf{x}_i^{t}$ zależy od położenia najlepszego dotąd
+osobnika, położeń sąsiadów oraz składnika losowego.
+
+\subsection{Eksploracja i eksploatacja}
+
+Skuteczność metaheurystyki zależy od równowagi pomiędzy dwoma fazami:
+\begin{itemize}
+    \item \textbf{eksploracją} -- przeszukiwaniem nowych, odległych obszarów przestrzeni,
+    \item \textbf{eksploatacją} -- lokalnym doprecyzowaniem rozwiązań w okolicach
+    obiecujących punktów.
+\end{itemize}
+Zbyt silna eksploracja spowalnia zbieżność, a zbyt silna eksploatacja prowadzi
+do przedwczesnej zbieżności do minimum lokalnego. Jednym ze sposobów pomiaru jest
+różnorodność populacji, np.\ w wersji wymiarowej:
+\begin{equation}
+    \mathrm{Div}_j^{t} = \frac{1}{N}\sum_{i=1}^{N}\left|\mathrm{med}(x_j^{t}) - x_{ij}^{t}\right|,
+    \qquad
+    \mathrm{Div}^{t} = \frac{1}{D}\sum_{j=1}^{D}\mathrm{Div}_j^{t},
+\end{equation}
+a udział eksploracji i eksploatacji wyznacza się odpowiednio jako
+\begin{equation}
+    \mathrm{XPL}\% = \frac{\mathrm{Div}^{t}}{\mathrm{Div}_{\max}}\cdot 100\%,
+    \qquad
+    \mathrm{XPT}\% = \frac{|\mathrm{Div}^{t}-\mathrm{Div}_{\max}|}{\mathrm{Div}_{\max}}\cdot 100\%.
+\end{equation}
+\todo{potwierdź, że takie wzory (Hussain i in.) odpowiadają wykresom wygenerowanym
+w Twoim kodzie}
+
+\subsection{Metodyka eksperymentów}
+
+Wszystkie algorytmy porównano w identycznych warunkach (ta sama funkcja celu,
+rozmiar populacji i budżet iteracji). Zbieżność oceniano na podstawie
+średniej i odchylenia standardowego najlepszej znalezionej wartości funkcji celu.
+Dla każdego algorytmu przygotowano siedem rodzajów wizualizacji:
+\begin{itemize}
+    \item \texttt{global\_best\_fitness} -- przebieg najlepszej wartości globalnej,
+    \item \texttt{local\_best\_fitness} -- przebieg najlepszych wartości lokalnych,
+    \item \texttt{global\_objectives} -- wartości funkcji celu globalnych rozwiązań,
+    \item \texttt{local\_objectives} -- wartości funkcji celu lokalnych rozwiązań,
+    \item \texttt{diversity} -- różnorodność populacji,
+    \item \texttt{exploration\_exploitation} -- bilans eksploracji i eksploatacji,
+    \item \texttt{runtime} -- czas działania.
+\end{itemize}
+
+%====================================================================
+\section{Algorytm FDO (OriginalFDO)}\label{sec:fdo}
+%====================================================================
+
+\subsection{Opis metody}
+
+\textit{Fitness Dependent Optimizer} (FDO)~\cite{abdullah2019fdo} to algorytm rojowy
+inspirowany poszukiwaniem nowych jaskiń przez pszczoły roju. Jego cechą charakterystyczną
+jest to, że długość kroku (ang.\ \textit{pace}) agenta zależy od wartości funkcji
+przystosowania. Położenie osobnika aktualizowane jest wzorem
+\begin{equation}
+    \mathbf{x}_i^{t+1} = \mathbf{x}_i^{t} + \mathbf{pace}_i^{t+1},
+\end{equation}
+gdzie $\mathbf{pace}_i$ jest wyznaczany na podstawie wagi przystosowania
+(ang.\ \textit{fitness weight}) $fw$, która porównuje jakość danego
+osobnika z jakością najlepszego rozwiązania globalnego. Gdy $fw$ jest bliskie
+zera lub równe jedności, algorytm wykonuje krok o losowym kierunku (eksploracja),
+w pozostałych przypadkach osobnik przemieszcza się w kierunku lidera
+(eksploatacja). \todo{parametry: rozmiar populacji, liczba iteracji, współczynnik
+wagi $wf$}
+
+\subsection{Zbieżność}
+
+\algfig{OriginalFDO}{global_best_fitness}{OriginalFDO -- przebieg najlepszej wartości globalnej.}
+\algfig{OriginalFDO}{local_best_fitness}{OriginalFDO -- przebieg najlepszych wartości lokalnych.}
+
+\todo{krótki komentarz do wykresów zbieżności}
+
+\subsection{Wartości funkcji celu}
+
+\algfig{OriginalFDO}{global_objectives}{OriginalFDO -- globalne wartości funkcji celu.}
+\algfig{OriginalFDO}{local_objectives}{OriginalFDO -- lokalne wartości funkcji celu.}
+
+\subsection{Różnorodność populacji oraz eksploracja i eksploatacja}
+
+\algfig{OriginalFDO}{diversity}{OriginalFDO -- różnorodność populacji.}
+\algfig{OriginalFDO}{exploration_exploitation}{OriginalFDO -- bilans eksploracji i eksploatacji.}
+
+\subsection{Czas działania}
+
+\algfig{OriginalFDO}{runtime}{OriginalFDO -- czas działania algorytmu.}
+
+%====================================================================
+\section{Algorytm FFA (OriginalFFA)}\label{sec:ffa}
+%====================================================================
+
+\subsection{Opis metody}
+
+Algorytm świetlika (\textit{Firefly Algorithm}, FFA)~\cite{yang2009ffa} wzorowany jest
+na zachowaniu świetlików, które przyciągają się wzajemnie za pomocą światła.
+Jasność świetlika jest proporcjonalna do jakości rozwiązania, a atrakcyjność
+maleje wraz z odległością:
+\begin{equation}
+    \beta(r) = \beta_0 \, e^{-\gamma r^{2}},
+\end{equation}
+gdzie $r$ to odległość euklidesowa między osobnikami, $\beta_0$ to atrakcyjność
+dla $r=0$, a $\gamma$ to współczynnik pochłaniania światła. Mniej jasny
+świetlik $i$ przemieszcza się w stronę jaśniejszego świetlika $j$:
+\begin{equation}
+    \mathbf{x}_i^{t+1} = \mathbf{x}_i^{t} + \beta_0 e^{-\gamma r_{ij}^{2}}
+    (\mathbf{x}_j^{t}-\mathbf{x}_i^{t}) + \alpha\,(\boldsymbol{\varepsilon}-\tfrac{1}{2}),
+\end{equation}
+gdzie $\alpha$ steruje składnikiem losowym, a $\boldsymbol{\varepsilon}\sim U(0,1)^D$.
+Dzięki temu populacja naturalnie dzieli się na podgrupy skupione wokół lokalnych
+optimów. \todo{parametry $\alpha$, $\beta_0$, $\gamma$ oraz rozmiar populacji}
+
+\subsection{Zbieżność}
+
+\algfig{OriginalFFA}{global_best_fitness}{OriginalFFA -- przebieg najlepszej wartości globalnej.}
+\algfig{OriginalFFA}{local_best_fitness}{OriginalFFA -- przebieg najlepszych wartości lokalnych.}
+
+\subsection{Wartości funkcji celu}
+
+\algfig{OriginalFFA}{global_objectives}{OriginalFFA -- globalne wartości funkcji celu.}
+\algfig{OriginalFFA}{local_objectives}{OriginalFFA -- lokalne wartości funkcji celu.}
+
+\subsection{Różnorodność populacji oraz eksploracja i eksploatacja}
+
+\algfig{OriginalFFA}{diversity}{OriginalFFA -- różnorodność populacji.}
+\algfig{OriginalFFA}{exploration_exploitation}{OriginalFFA -- bilans eksploracji i eksploatacji.}
+
+\subsection{Czas działania}
+
+\algfig{OriginalFFA}{runtime}{OriginalFFA -- czas działania algorytmu.}
+
+%====================================================================
+\section{Algorytm FOA (OriginalFOA)}\label{sec:foa}
+%====================================================================
+
+\subsection{Opis metody}
+
+Algorytm optymalizacji muszki owocówki (\textit{Fruit Fly Optimization Algorithm}, FOA)~\cite{pan2012foa}
+naśladuje sposób, w jaki muszki owocówki znajdują pożywienie przy użyciu węchu
+i wzroku. W fazie węchowej każda muszka wykonuje losowy lot wokół aktualnego położenia roju:
+\begin{equation}
+    \mathbf{x}_i = \mathbf{X}_{\mathrm{swarm}} + \mathbf{RV}_i,
+\end{equation}
+gdzie $\mathbf{RV}_i$ to losowy wektor przesunięcia. Następnie wyznaczana jest
+odległość $\mathrm{Dist}_i$ od początku układu i stężenie zapachu
+$S_i = 1/\mathrm{Dist}_i$, które podstawia się do funkcji przystosowania.
+W fazie wzrokowej cały rój przemieszcza się w miejsce, gdzie znaleziono najlepszą
+wartość. Oryginalna wersja algorytmu jest prosta, ale wrażliwa na skalę problemu
+i skłonna do utknięcia w minimum lokalnym. \todo{parametry}
+
+\subsection{Zbieżność}
+
+\algfig{OriginalFOA}{global_best_fitness}{OriginalFOA -- przebieg najlepszej wartości globalnej.}
+\algfig{OriginalFOA}{local_best_fitness}{OriginalFOA -- przebieg najlepszych wartości lokalnych.}
+
+\subsection{Wartości funkcji celu}
+
+\algfig{OriginalFOA}{global_objectives}{OriginalFOA -- globalne wartości funkcji celu.}
+\algfig{OriginalFOA}{local_objectives}{OriginalFOA -- lokalne wartości funkcji celu.}
+
+\subsection{Różnorodność populacji oraz eksploracja i eksploatacja}
+
+\algfig{OriginalFOA}{diversity}{OriginalFOA -- różnorodność populacji.}
+\algfig{OriginalFOA}{exploration_exploitation}{OriginalFOA -- bilans eksploracji i eksploatacji.}
+
+\subsection{Czas działania}
+
+\algfig{OriginalFOA}{runtime}{OriginalFOA -- czas działania algorytmu.}
+
+%====================================================================
+\section{Algorytm DevFOA}\label{sec:devfoa}
+%====================================================================
+
+\subsection{Opis metody}
+
+DevFOA to ulepszony wariant algorytmu FOA, w którym zmodyfikowano
+sposób generowania położeń muszek i aktualizacji położenia roju tak, aby
+ograniczyć wady wersji oryginalnej (silną zależność od skali problemu i
+ryzyko przedwczesnej zbieżności). \todo{krótko opisz, jakie modyfikacje wprowadza
+DevFOA w implementacji, której użyłeś, oraz parametry}
+
+\subsection{Zbieżność}
+
+\algfig{DevFOA}{global_best_fitness}{DevFOA -- przebieg najlepszej wartości globalnej.}
+\algfig{DevFOA}{local_best_fitness}{DevFOA -- przebieg najlepszych wartości lokalnych.}
+
+\subsection{Wartości funkcji celu}
+
+\algfig{DevFOA}{global_objectives}{DevFOA -- globalne wartości funkcji celu.}
+\algfig{DevFOA}{local_objectives}{DevFOA -- lokalne wartości funkcji celu.}
+
+\subsection{Różnorodność populacji oraz eksploracja i eksploatacja}
+
+\algfig{DevFOA}{diversity}{DevFOA -- różnorodność populacji.}
+\algfig{DevFOA}{exploration_exploitation}{DevFOA -- bilans eksploracji i eksploatacji.}
+
+\subsection{Czas działania}
+
+\algfig{DevFOA}{runtime}{DevFOA -- czas działania algorytmu.}
+
+%====================================================================
+\section{Algorytm WhaleFOA}\label{sec:whalefoa}
+%====================================================================
+
+\subsection{Opis metody}
+
+WhaleFOA to hybryda algorytmu muszki owocówki z mechanizmami algorytmu
+wielorybów (\textit{Whale Optimization Algorithm}, WOA)~\cite{mirjalili2016woa}.
+Z WOA przejęto otaczanie ofiary oraz spiralny ruch wokół najlepszego rozwiązania:
+\begin{align}
+    \mathbf{x}^{t+1} &= \mathbf{x}^{*t} - \mathbf{A}\cdot\left|\mathbf{C}\cdot\mathbf{x}^{*t}-\mathbf{x}^{t}\right|, \\
+    \mathbf{x}^{t+1} &= \left|\mathbf{x}^{*t}-\mathbf{x}^{t}\right| e^{bl}\cos(2\pi l) + \mathbf{x}^{*t},
+\end{align}
+gdzie $\mathbf{A}$ i $\mathbf{C}$ to wektory współczynników, $b$ to stała kształtu spirali,
+a $l\in[-1,1]$ to liczba losowa. Wprowadzenie ruchu spiralnego poprawia eksploatację
+w otoczeniu najlepszego rozwiązania, bez rezygnacji z losowego lotu muszek.
+\todo{potwierdź szczegóły implementacji i parametry}
+
+\subsection{Zbieżność}
+
+\algfig{WhaleFOA}{global_best_fitness}{WhaleFOA -- przebieg najlepszej wartości globalnej.}
+\algfig{WhaleFOA}{local_best_fitness}{WhaleFOA -- przebieg najlepszych wartości lokalnych.}
+
+\subsection{Wartości funkcji celu}
+
+\algfig{WhaleFOA}{global_objectives}{WhaleFOA -- globalne wartości funkcji celu.}
+\algfig{WhaleFOA}{local_objectives}{WhaleFOA -- lokalne wartości funkcji celu.}
+
+\subsection{Różnorodność populacji oraz eksploracja i eksploatacja}
+
+\algfig{WhaleFOA}{diversity}{WhaleFOA -- różnorodność populacji.}
+\algfig{WhaleFOA}{exploration_exploitation}{WhaleFOA -- bilans eksploracji i eksploatacji.}
+
+\subsection{Czas działania}
+
+\algfig{WhaleFOA}{runtime}{WhaleFOA -- czas działania algorytmu.}
+
+%====================================================================
+\section{Algorytm CRO (OriginalCRO)}\label{sec:cro}
+%====================================================================
+
+\subsection{Opis metody}
+
+\textit{Coral Reefs Optimization} (CRO)~\cite{salcedo2014cro} modeluje powstawanie
+i rozwój raf koralowych. Rafa to siatka, w której każde pole jest puste albo zajęte
+przez koralowca (rozwiązanie). Jedna iteracja obejmuje następujące etapy:
+\begin{enumerate}
+    \item rozmnażanie zewnętrzne (\textit{broadcast spawning}) -- krzyżowanie par koralowców,
+    \item rozmnażanie wewnętrzne (\textit{brooding}) -- mutacja pojedynczych koralowców,
+    \item osiedlanie się larw -- larwy zajmują wolne pola lub wypierają słabsze osobniki,
+    \item pączkowanie (\textit{budding}) -- duplikowanie najlepszych koralowców,
+    \item drapieżnictwo (\textit{depredation}) -- usuwanie części najsłabszych osobników.
+\end{enumerate}
+Algorytm ma charakter ewolucyjny, ale ze względu na populacyjną strukturę i
+obecność w zestawie metod rojowych MEALPY został uwzględniony w tym porównaniu.
+\todo{parametry: rozmiar rafy, $\rho_0$, $F_b$, $F_a$, $F_d$, $P_d$}
+
+\subsection{Zbieżność}
+
+\algfig{OriginalCRO}{global_best_fitness}{OriginalCRO -- przebieg najlepszej wartości globalnej.}
+\algfig{OriginalCRO}{local_best_fitness}{OriginalCRO -- przebieg najlepszych wartości lokalnych.}
+
+\subsection{Wartości funkcji celu}
+
+\algfig{OriginalCRO}{global_objectives}{OriginalCRO -- globalne wartości funkcji celu.}
+\algfig{OriginalCRO}{local_objectives}{OriginalCRO -- lokalne wartości funkcji celu.}
+
+\subsection{Różnorodność populacji oraz eksploracja i eksploatacja}
+
+\algfig{OriginalCRO}{diversity}{OriginalCRO -- różnorodność populacji.}
+\algfig{OriginalCRO}{exploration_exploitation}{OriginalCRO -- bilans eksploracji i eksploatacji.}
+
+\subsection{Czas działania}
+
+\algfig{OriginalCRO}{runtime}{OriginalCRO -- czas działania algorytmu.}
+
+%====================================================================
+\section{Podsumowanie i wnioski}\label{sec:podsumowanie}
+%====================================================================
+
+\subsection{Zbiorcze wyniki eksperymentów}
+
+Tabela~\ref{tab:ranking} zawiera ranking algorytmów w podziale na wymiar problemu,
+uporządkowany rosnąco względem średniej wartości funkcji celu (minimalizacja).
+Podano również odchylenie standardowe wyników.
+
+\begin{table}[H]
+\centering
+\caption{Ranking algorytmów w podziale na wymiary (średnia i odchylenie standardowe najlepszej wartości funkcji celu).}
+\label{tab:ranking}
+\small
+\begin{tabular}{rllrr}
+\toprule
+Wymiar & Miejsce & Algorytm & Średnia & Odch.\ std. \\
+\midrule
+2 & 1 & WhaleFOA    & \sn{-3{,}716}{1} & \sn{1{,}820}{2} \\
+2 & 2 & DevFOA      & \sn{-1{,}016}{1} & \sn{2{,}013}{2} \\
+2 & 3 & OriginalFDO & \sn{-8{,}355}{0} & \sn{1{,}826}{2} \\
+2 & 4 & OriginalFFA & \sn{1{,}581}{2}  & \sn{5{,}546}{2} \\
+2 & 5 & OriginalFOA & \sn{3{,}018}{3}  & \sn{8{,}271}{3} \\
+2 & 6 & OriginalCRO & \sn{7{,}379}{3}  & \sn{2{,}038}{4} \\
+\midrule
+3 & 1 & WhaleFOA    & \sn{-5{,}290}{1} & \sn{2{,}592}{2} \\
+3 & 2 & DevFOA      & \sn{3{,}097}{1}  & \sn{3{,}721}{2} \\
+3 & 3 & OriginalFDO & \sn{5{,}596}{3}  & \sn{2{,}650}{4} \\
+3 & 4 & OriginalCRO & \sn{8{,}843}{3}  & \sn{2{,}633}{4} \\
+3 & 5 & OriginalFFA & \sn{5{,}922}{4}  & \sn{2{,}787}{5} \\
+3 & 6 & OriginalFOA & \sn{6{,}354}{4}  & \sn{1{,}865}{5} \\
+\midrule
+10 & 1 & DevFOA      & \sn{1{,}859}{2} & \sn{1{,}365}{3} \\
+10 & 2 & WhaleFOA    & \sn{2{,}393}{3} & \sn{1{,}132}{4} \\
+10 & 3 & OriginalFDO & \sn{9{,}016}{4} & \sn{3{,}374}{5} \\
+10 & 4 & OriginalCRO & \sn{1{,}360}{5} & \sn{6{,}135}{5} \\
+10 & 5 & OriginalFOA & \sn{1{,}578}{8} & \sn{7{,}538}{8} \\
+10 & 6 & OriginalFFA & \sn{1{,}674}{8} & \sn{8{,}128}{8} \\
+\midrule
+30 & 1 & DevFOA      & \sn{9{,}010}{2} & \sn{4{,}935}{3} \\
+30 & 2 & WhaleFOA    & \sn{3{,}111}{3} & \sn{1{,}187}{4} \\
+30 & 3 & OriginalFDO & \sn{5{,}799}{5} & \sn{2{,}694}{6} \\
+30 & 4 & OriginalCRO & \sn{8{,}028}{6} & \sn{3{,}896}{7} \\
+30 & 5 & OriginalFFA & \sn{1{,}802}{9} & \sn{8{,}627}{9} \\
+30 & 6 & OriginalFOA & \sn{4{,}109}{9} & \sn{1{,}962}{10} \\
+\midrule
+50 & 1 & DevFOA      & \sn{2{,}302}{3} & \sn{1{,}134}{4} \\
+50 & 2 & WhaleFOA    & \sn{3{,}780}{3} & \sn{1{,}375}{4} \\
+50 & 3 & OriginalCRO & \sn{5{,}400}{7} & \sn{2{,}629}{8} \\
+50 & 4 & OriginalFDO & \sn{5{,}404}{7} & \sn{2{,}642}{8} \\
+50 & 5 & OriginalFFA & \sn{3{,}862}{9} & \sn{1{,}833}{10} \\
+50 & 6 & OriginalFOA & \sn{8{,}762}{9} & \sn{4{,}146}{10} \\
+\midrule
+100 & 1 & DevFOA      & \sn{1{,}853}{3} & \sn{1{,}012}{4} \\
+100 & 2 & WhaleFOA    & \sn{8{,}553}{3} & \sn{2{,}662}{4} \\
+100 & 3 & OriginalCRO & \sn{4{,}645}{8} & \sn{2{,}258}{9} \\
+100 & 4 & OriginalFDO & \sn{6{,}331}{8} & \sn{3{,}088}{9} \\
+100 & 5 & OriginalFFA & \sn{9{,}721}{9} & \sn{4{,}563}{10} \\
+100 & 6 & OriginalFOA & \sn{2{,}037}{10} & \sn{9{,}505}{10} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Wykresy zbiorcze}
+
+Rysunek~\ref{fig:srednia} przedstawia średnią wartość funkcji celu w funkcji
+wymiaru problemu (skala logarytmiczna). Pominięto wymiary 2 i 3, w których część
+średnich jest ujemna, więc nie da się ich pokazać na skali logarytmicznej.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    width=0.9\textwidth, height=8cm,
+    xmode=log, ymode=log,
+    xlabel={Wymiar problemu $D$},
+    ylabel={Średnia wartość funkcji celu},
+    xtick={10,30,50,100}, xticklabels={10,30,50,100},
+    legend pos=outer north east,
+    legend style={font=\footnotesize},
+    grid=major, mark size=2pt,
+]
+\addplot coordinates {(10,9.015763e4)(30,5.799214e5)(50,5.404148e7)(100,6.330853e8)};
+\addlegendentry{OriginalFDO}
+\addplot coordinates {(10,1.673606e8)(30,1.802056e9)(50,3.861758e9)(100,9.720885e9)};
+\addlegendentry{OriginalFFA}
+\addplot coordinates {(10,1.578125e8)(30,4.109108e9)(50,8.761850e9)(100,2.036561e10)};
+\addlegendentry{OriginalFOA}
+\addplot coordinates {(10,1.858975e2)(30,9.009919e2)(50,2.301916e3)(100,1.852765e3)};
+\addlegendentry{DevFOA}
+\addplot coordinates {(10,2.392976e3)(30,3.111166e3)(50,3.780421e3)(100,8.553186e3)};
+\addlegendentry{WhaleFOA}
+\addplot coordinates {(10,1.360119e5)(30,8.028194e6)(50,5.399567e7)(100,4.645033e8)};
+\addlegendentry{OriginalCRO}
+\end{axis}
+\end{tikzpicture}
+\caption{Średnia wartość funkcji celu w zależności od wymiaru problemu.}
+\label{fig:srednia}
+\end{figure}
+
+Rysunek~\ref{fig:rankingsr} pokazuje średnie miejsce algorytmów w rankingu
+uśrednione po wszystkich sześciu wymiarach (im mniej, tym lepiej).
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+    ybar, width=0.9\textwidth, height=7cm,
+    symbolic x coords={DevFOA,WhaleFOA,OriginalFDO,OriginalCRO,OriginalFFA,OriginalFOA},
+    xtick=data, x tick label style={rotate=30, anchor=east, font=\footnotesize},
+    ylabel={Średnie miejsce w rankingu},
+    ymin=0, ymax=6.5, nodes near coords, nodes near coords style={font=\footnotesize},
+    bar width=18pt, grid=major,
+]
+\addplot coordinates {(DevFOA,1.33)(WhaleFOA,1.67)(OriginalFDO,3.33)(OriginalCRO,4.00)(OriginalFFA,5.00)(OriginalFOA,5.67)};
+\end{axis}
+\end{tikzpicture}
+\caption{Średnie miejsce algorytmów w rankingu (uśrednione po wymiarach $D\in\{2,3,10,30,50,100\}$).}
+\label{fig:rankingsr}
+\end{figure}
+
+\subsection{Ranking końcowy}
+
+\begin{table}[H]
+\centering
+\caption{Ranking końcowy -- średnie miejsce w rankingu wymiarowym.}
+\label{tab:final}
+\begin{tabular}{clr}
+\toprule
+Miejsce & Algorytm & Średnie miejsce \\
+\midrule
+1 & DevFOA      & 1{,}33 \\
+2 & WhaleFOA    & 1{,}67 \\
+3 & OriginalFDO & 3{,}33 \\
+4 & OriginalCRO & 4{,}00 \\
+5 & OriginalFFA & 5{,}00 \\
+6 & OriginalFOA & 5{,}67 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Dyskusja}
+
+Wyniki jednoznacznie wskazują dwóch liderów: \textit{DevFOA} i \textit{WhaleFOA}.
+Dla niskich wymiarów ($D=2,3$) lepszy jest WhaleFOA, który uzyskuje ujemne
+średnie wartości funkcji celu. Od $D=10$ przewagę zyskuje DevFOA. Dla $D=100$
+jego wynik (rzędu $10^{3}$) jest o około pięć rzędów wielkości lepszy
+od OriginalCRO i OriginalFDO oraz o siedem rzędów lepszy od OriginalFOA.
+Co istotne, średnie dla obu liderów rosną wraz z wymiarem znacznie wolniej niż
+dla pozostałych algorytmów.
+
+Pozostałe algorytmy bardzo silnie odczuwają tzw.\ \textit{przekleństwo wymiarowości}.
+OriginalFDO i OriginalCRO zajmują pozycje pośrednie. FDO jest trzeci w niemal
+wszystkich wymiarach, a CRO wyprzedza go dopiero dla $D=50$ i $D=100$.
+Oryginalne algorytmy FFA i FOA są najgorsze, a ich średnie dla $D\geq 10$ są rzędu $10^{8}$--$10^{10}$.
+Potwierdza to, że wersje oryginalne FOA są ograniczone, a modyfikacje (DevFOA, WhaleFOA)
+znacząco poprawiają jakość rozwiązań.
+
+Odchylenia standardowe są w większości przypadków porównywalne ze średnimi, a w kilku
+przypadkach nawet od nich większe. Oznacza to, że rozkład wyników jest silnie
+skośny: w pojedynczych uruchomieniach występują bardzo duże wartości, które wpływają
+na średnią. Warto więc dodatkowo rozważyć medianę.
+\todo{uzupełnij dyskusję o wnioski z wykresów różnorodności, bilansu eksploracji
+i eksploatacji oraz czasu działania (np.\ który algorytm jest najszybszy i czy
+lepsza jakość wiąże się z dłuższym czasem)}
+
+\subsection{Wnioski}
+
+\begin{enumerate}
+    \item Najlepsze wyniki osiągają zmodyfikowane warianty algorytmu FOA: DevFOA (najlepszy
+    dla $D\geq10$) i WhaleFOA (najlepszy dla $D\leq3$).
+    \item Wraz ze wzrostem wymiaru różnice między algorytmami szybko się powiększają.
+    \item Oryginalne wersje FOA i FFA nie sprawdzają się w problemach o wymiarze większym niż 10.
+    \item Wyłaniający się ranking końcowy to: DevFOA $>$ WhaleFOA $>$ OriginalFDO $>$ OriginalCRO $>$
+    OriginalFFA $>$ OriginalFOA.
+\end{enumerate}
+
+%====================================================================
+\printbibliography[title={Literatura}]
+
+\end{document}
